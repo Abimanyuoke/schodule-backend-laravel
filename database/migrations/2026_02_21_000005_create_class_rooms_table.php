@@ -14,12 +14,14 @@ return new class extends Migration
             $table->string('name');
 
             $table->foreignId('subject_id')
+                  ->nullable()
                   ->constrained('subjects')
-                  ->cascadeOnDelete();
+                  ->nullOnDelete();
 
             $table->foreignId('teacher_id')
+                  ->nullable()
                   ->constrained('teachers')
-                  ->cascadeOnDelete();
+                  ->nullOnDelete();
 
             $table->timestamps();
         });

@@ -8,7 +8,8 @@ class ClassRoom extends Model
 {
     protected $fillable = [
         'name',
-        'description',
+        'subject_id',
+        'teacher_id',
     ];
 
     /**

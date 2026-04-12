@@ -286,16 +286,5 @@ class UserController extends Controller
         }
     }
 }
-        $request->validate([
-            'file' => 'required|file|mimes:xlsx,xls,csv',
-        ]);
-
-        $import = new UsersImport('student');
-        Excel::import($import, $request->file('file'));
-
-        return response()->json([
-            'message' => 'Students imported successfully',
-            'failures' => $import->failures(),
-        ]);
     
 

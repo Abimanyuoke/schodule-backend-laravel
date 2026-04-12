@@ -13,6 +13,7 @@ return new class extends Migration
             $table->string('name');
             $table->time('start_time');
             $table->time('end_time');
+            $table->text('note')->nullable();
             $table->timestamps();
         });
     }

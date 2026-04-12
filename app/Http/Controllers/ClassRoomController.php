@@ -37,6 +37,8 @@ class ClassRoomController extends Controller
         try {
             $validated = $request->validate([
                 'name' => 'required|string|max:255',
+                'subject_id' => 'nullable|exists:subjects,id',
+                'teacher_id' => 'nullable|exists:teachers,id',
             ]);
 
             $class = ClassRoom::create($validated);
@@ -94,7 +96,9 @@ class ClassRoomController extends Controller
             $class = ClassRoom::findOrFail($id);
 
             $validated = $request->validate([
-                'name' => 'required|string|max:255',
+                'name' => 'sometimes|required|string|max:255',
+                'subject_id' => 'nullable|exists:subjects,id',
+                'teacher_id' => 'nullable|exists:teachers,id',
             ]);
 
             $class->update($validated);

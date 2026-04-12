@@ -12,6 +12,9 @@ use App\Http\Controllers\SubjectController;
 use App\Http\Controllers\SubSubjectController;
 use App\Http\Controllers\UserPhotoController;
 use App\Http\Controllers\ClassRoomController;
+use App\Http\Controllers\SessionController;
+use App\Http\Controllers\StudentController;
+use App\Http\Controllers\TeacherController;
 
 /**
  * PUBLIC ROUTES
@@ -35,6 +38,11 @@ Route::middleware('auth:sanctum')->group(function () {
      */
     Route::apiResource('subjects', SubjectController::class);
     Route::apiResource('sub-subjects', SubSubjectController::class);
+    
+    // Sessions - Read only for general users
+    Route::get('/sessions', [SessionController::class, 'index']);
+    Route::get('/sessions/{session}', [SessionController::class, 'show']);
+    Route::get('/sessions-with-schedules', [SessionController::class, 'withSchedules']);
 
     /**
      * ADMIN ROUTES
@@ -53,10 +61,15 @@ Route::middleware('auth:sanctum')->group(function () {
 
             // User Management
             Route::apiResource('users', UserController::class);
+            Route::apiResource('teachers', TeacherController::class);
+            Route::apiResource('students', StudentController::class);
 
             // Class Management
             Route::apiResource('classes', ClassRoomController::class);
             Route::post('/classes/{id}/students', [ClassRoomController::class, 'addStudents']);
+
+            // Session Management (Full CRUD for admin)
+            Route::apiResource('sessions', SessionController::class)->except(['index', 'show']);
 
             // Schedule Management
             Route::apiResource('schedules', ScheduleController::class);
@@ -68,6 +81,24 @@ Route::middleware('auth:sanctum')->group(function () {
             // Schedule Views
             Route::get('/schedules/class/{classRoom}', [ScheduleController::class, 'byClass']);
             Route::get('/schedules/teacher/{teacher}', [ScheduleController::class, 'byTeacher']);
+
+
+                // Users (GET list, PUT update, DELETE destroy)
+    Route::apiResource('users', UserController::class);
+    Route::post('users/{id}/password', [UserController::class, 'updatePassword']);
+
+    // Students
+    Route::apiResource('students', StudentController::class);
+
+    // Teachers
+    Route::apiResource('teachers', TeacherController::class);
+
+    // Sessions
+    Route::apiResource('sessions', SessionController::class);
+
+    // Import
+    Route::post('import/students', [UserController::class, 'importStudents']);
+    Route::post('import/teachers', [UserController::class, 'importTeachers']);
         });
 
     /**
