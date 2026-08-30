@@ -6,7 +6,6 @@ use App\Models\User;
 use App\Models\Subject;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
-use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Collection;
 use Maatwebsite\Excel\Concerns\ToCollection;
 use Maatwebsite\Excel\Concerns\WithHeadingRow;
@@ -14,13 +13,11 @@ use Maatwebsite\Excel\Concerns\WithValidation;
 use Maatwebsite\Excel\Concerns\SkipsOnFailure;
 use Maatwebsite\Excel\Concerns\SkipsFailures;
 use Maatwebsite\Excel\Concerns\WithChunkReading;
-use Maatwebsite\Excel\Concerns\WithBatchInserts;
 
 class UsersImport implements
     ToCollection,
     WithHeadingRow,
     WithChunkReading,
-    WithBatchInserts,
     WithValidation,
     SkipsOnFailure
 {
@@ -28,12 +25,16 @@ class UsersImport implements
 
     protected string $role;
     protected array $subjectCache = [];
+    protected int $totalRows = 0;
+    protected int $validRows = 0;
+    protected int $createdRows = 0;
+    protected int $skippedRows = 0;
+    protected array $passwordHashCache = [];
 
     public function __construct(string $role)
     {
         $this->role = $role;
-        
-        // Cache all subjects at the beginning to avoid N+1 queries
+
         if ($role === 'teacher') {
             Subject::all()->each(function ($subject) {
                 $this->subjectCache[strtolower(trim($subject->name))] = $subject->id;
@@ -43,72 +44,89 @@ class UsersImport implements
 
     public function collection(Collection $rows)
     {
-        // Process all rows in one transaction for better performance
-        DB::transaction(function () use ($rows) {
+        $this->totalRows += $rows->count();
+
+        $codes = $rows->map(function ($row) {
+            return trim((string) ($row[$this->role === 'teacher' ? 'id_pengajar' : 'id_siswa']
+                ?? $row[$this->role === 'teacher' ? 'kode_pengajar' : 'kode_siswa']
+                ?? $row[$this->role === 'teacher' ? 'id_tentor' : 'nis']
+                ?? $row['kode_user'] ?? ''));
+        })->filter()->unique()->values();
+
+        $existingUsers = User::whereIn('kode_user', $codes)
+            ->with($this->role === 'teacher' ? 'teacher' : 'student')
+            ->get()
+            ->keyBy('kode_user');
+
+        DB::transaction(function () use ($rows, $existingUsers) {
             foreach ($rows as $row) {
-                $this->processRow($row);
+                $this->processRow($row, $existingUsers);
             }
         });
     }
 
-    protected function processRow($row)
+    protected function processRow($row, $existingUsers)
     {
-        // Debug: Log raw row data
-        Log::info('Processing row for ' . $this->role, ['row' => $row]);
         
         if ($this->role === 'teacher') {
 
-            $kodeUser = trim($row['id_pengajar'] ?? $row['kode_user'] ?? '');
-            $name = trim($row['nama_pengajar'] ?? $row['nama'] ?? '');
-            $password = (string) ($row['password_default'] ?? '123456');
-            $subjectInput = trim($row['mapel'] ?? '');
+            $kodeUser = trim((string) ($row['id_pengajar'] ?? $row['kode_pengajar'] ?? $row['id_tentor'] ?? $row['kode_user'] ?? ''));
+            $name = trim((string) ($row['nama_pengajar'] ?? $row['nama_tentor'] ?? $row['nama_lengkap'] ?? $row['nama'] ?? ''));
+            $password = trim((string) ($row['password_default'] ?? '')) ?: '123456';
+            $subjectInput = trim((string) ($row['mapel'] ?? $row['mata_pelajaran'] ?? $row['subject'] ?? ''));
 
         } else {
 
-            $kodeUser = trim($row['id_siswa'] ?? $row['kode_user'] ?? '');
-            $name = trim($row['nama_siswa'] ?? $row['nama'] ?? '');
-            $password = (string) ($row['password_default'] ?? '123456');
+            $kodeUser = trim((string) ($row['id_siswa'] ?? $row['kode_siswa'] ?? $row['nis'] ?? $row['kode_user'] ?? ''));
+            $name = trim((string) ($row['nama_siswa'] ?? $row['nama_lengkap'] ?? $row['nama'] ?? ''));
+            $password = trim((string) ($row['password_default'] ?? '')) ?: '123456';
             $subjectInput = null;
         }
         
-        // Debug: Log extracted data
-        Log::info('Extracted data', [
-            'kode_user' => $kodeUser,
-            'name' => $name,
-            'role' => $this->role
-        ]);
-
-        if (!$kodeUser) {
-            Log::warning('Skipping row: kode_user is empty');
+        if (!$kodeUser || !$name) {
+            $this->skippedRows++;
             return null;
         }
 
-        // Skip if user already exists (faster than validation)
-        if (User::where('kode_user', $kodeUser)->exists()) {
-            Log::info('Skipping row: user already exists', ['kode_user' => $kodeUser]);
+        $this->validRows++;
+
+        $user = $existingUsers->get($kodeUser);
+
+        if ($user && $user->role !== $this->role) {
+            $this->skippedRows++;
             return null;
         }
 
-        $user = User::create([
-            'kode_user' => $kodeUser,
-            'name'      => $name,
-            'role'      => $this->role,
-            'password'  => Hash::make($password),
-        ]);
-        
-        Log::info('User created successfully', [
-            'id' => $user->id,
-            'kode_user' => $user->kode_user,
-            'role' => $user->role
-        ]);
+        if ($user) {
+            $profileExists = $this->role === 'teacher'
+                ? $user->teacher()->exists()
+                : $user->student()->exists();
+
+            if ($profileExists) {
+                $this->skippedRows++;
+                return null;
+            }
+        }
+
+        if (!$user) {
+            $passwordHash = $this->passwordHashCache[$password]
+                ??= Hash::make($password);
+
+            $user = User::create([
+                'kode_user' => $kodeUser,
+                'name'      => $name,
+                'role'      => $this->role,
+                'password'  => $passwordHash,
+            ]);
+            $this->createdRows++;
+        }
 
         if ($this->role === 'student') {
 
-            $user->student()->create([
+            $user->student()->firstOrCreate([], [
                 'year' => now()->year
             ]);
             
-            Log::info('Student record created', ['user_id' => $user->id]);
         }
 
         if ($this->role === 'teacher') {
@@ -132,7 +150,7 @@ class UsersImport implements
                 }
             }
 
-            $user->teacher()->create([
+            $user->teacher()->firstOrCreate([], [
                 'teacher_code' => $kodeUser,
                 'subject_id' => $subjectId
             ]);
@@ -146,9 +164,24 @@ class UsersImport implements
         return 100; // Process 100 rows per chunk
     }
 
-    public function batchSize(): int
+    public function totalRows(): int
     {
-        return 100;
+        return $this->totalRows;
+    }
+
+    public function createdRows(): int
+    {
+        return $this->createdRows;
+    }
+
+    public function validRows(): int
+    {
+        return $this->validRows;
+    }
+
+    public function skippedRows(): int
+    {
+        return $this->skippedRows;
     }
 
     public function rules(): array

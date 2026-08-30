@@ -35,6 +35,20 @@ class AuthController extends Controller
             'user' => $user,
         ]);
     }
+    
+    public function resetPassword(Request $request)
+    {
+        $validated = $request->validate([
+            'kode_user' => 'required|string|exists:users,kode_user',
+            'password' => 'required|string|min:6|confirmed',
+        ]);
+
+        $user = \App\Models\User::where('kode_user', $validated['kode_user'])->firstOrFail();
+        $user->update(['password' => bcrypt($validated['password'])]);
+        $user->tokens()->delete();
+
+        return response()->json(['message' => 'Password berhasil direset.']);
+    }
 
     /**
      * Logout current device by revoking current token

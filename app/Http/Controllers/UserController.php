@@ -13,6 +13,21 @@ use Exception;
 
 class UserController extends Controller
 {
+    public function updateProfileAvatar(Request $request)
+    {
+        $validated = $request->validate([
+            'profile_photo' => 'required|string|regex:/^avatars\/[1-6]\.png$/',
+        ]);
+
+        $user = $request->user();
+        $user->update($validated);
+
+        return response()->json([
+            'message' => 'Profile avatar updated successfully',
+            'data' => $user->fresh(),
+        ]);
+    }
+
     /**
      * Get all users with role filtering
      */
@@ -118,12 +133,14 @@ class UserController extends Controller
                 'kode_user' => 'required|string|max:50|unique:users,kode_user,' . $id,
                 'name' => 'required|string|max:255',
                 'role' => 'required|in:admin,teacher,student',
+                'profile_photo' => 'nullable|string|regex:/^avatars\/[1-6]\.png$/',
             ]);
 
             $user->update([
                 'kode_user' => $request->kode_user,
                 'name' => $request->name,
                 'role' => $request->role,
+                'profile_photo' => $request->profile_photo,
             ]);
 
             return response()->json([
@@ -235,9 +252,23 @@ class UserController extends Controller
 
             $failures = $import->failures();
 
+            if ($import->totalRows() === 0 || $import->validRows() === 0) {
+                return response()->json([
+                    'message' => 'Tidak ada baris tentor yang berhasil diproses. Periksa header Excel dan pastikan ID belum digunakan untuk role lain.',
+                    'total_rows' => $import->totalRows(),
+                    'valid_rows' => $import->validRows(),
+                    'created_rows' => $import->createdRows(),
+                    'skipped_rows' => $import->skippedRows(),
+                    'failures' => $failures,
+                ], 422);
+            }
+
             return response()->json([
                 'message' => 'Teachers imported successfully',
-                'total_rows' => count($failures) > 0 ? 'Check failures' : 'All imported',
+                'total_rows' => $import->totalRows(),
+                'valid_rows' => $import->validRows(),
+                'created_rows' => $import->createdRows(),
+                'skipped_rows' => $import->skippedRows(),
                 'failures' => $failures,
             ]);
         } catch (ValidationException $e) {
@@ -268,9 +299,23 @@ class UserController extends Controller
 
             $failures = $import->failures();
 
+            if ($import->totalRows() === 0 || $import->validRows() === 0) {
+                return response()->json([
+                    'message' => 'Tidak ada baris pelajar yang berhasil diproses. Periksa header Excel dan pastikan ID belum digunakan untuk role lain.',
+                    'total_rows' => $import->totalRows(),
+                    'valid_rows' => $import->validRows(),
+                    'created_rows' => $import->createdRows(),
+                    'skipped_rows' => $import->skippedRows(),
+                    'failures' => $failures,
+                ], 422);
+            }
+
             return response()->json([
                 'message' => 'Students imported successfully',
-                'total_rows' => count($failures) > 0 ? 'Check failures' : 'All imported',
+                'total_rows' => $import->totalRows(),
+                'valid_rows' => $import->validRows(),
+                'created_rows' => $import->createdRows(),
+                'skipped_rows' => $import->skippedRows(),
                 'failures' => $failures,
             ]);
         } catch (ValidationException $e) {

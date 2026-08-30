@@ -20,6 +20,7 @@ use App\Http\Controllers\TeacherController;
  * PUBLIC ROUTES
  */
 Route::post('/login', [AuthController::class, 'login']);
+Route::post('/reset-password', [AuthController::class, 'resetPassword']);
 
 /**
  * PROTECTED ROUTES - Require authentication
@@ -32,6 +33,7 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('/logout', [AuthController::class, 'logout']);
     Route::post('/logout-all', [AuthController::class, 'logoutAll']);
     Route::get('/me', [AuthController::class, 'me']);
+    Route::patch('/me/avatar', [UserController::class, 'updateProfileAvatar']);
 
     /**
      * Public Data Routes - Available to all authenticated users
@@ -81,24 +83,6 @@ Route::middleware('auth:sanctum')->group(function () {
             // Schedule Views
             Route::get('/schedules/class/{classRoom}', [ScheduleController::class, 'byClass']);
             Route::get('/schedules/teacher/{teacher}', [ScheduleController::class, 'byTeacher']);
-
-
-                // Users (GET list, PUT update, DELETE destroy)
-    Route::apiResource('users', UserController::class);
-    Route::post('users/{id}/password', [UserController::class, 'updatePassword']);
-
-    // Students
-    Route::apiResource('students', StudentController::class);
-
-    // Teachers
-    Route::apiResource('teachers', TeacherController::class);
-
-    // Sessions
-    Route::apiResource('sessions', SessionController::class);
-
-    // Import
-    Route::post('import/students', [UserController::class, 'importStudents']);
-    Route::post('import/teachers', [UserController::class, 'importTeachers']);
         });
 
     /**

@@ -18,7 +18,7 @@ class ClassRoom extends Model
     public function students()
     {
         return $this->belongsToMany(Student::class, 'class_student')
-            ->withPivot('joined_at')
+            ->withPivot('is_active')
             ->withTimestamps();
     }
 
