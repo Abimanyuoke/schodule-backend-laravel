@@ -510,6 +510,24 @@ class ScheduleController extends Controller
         ]);
     }
 
+    public function confirmRejection(Schedule $schedule)
+    {
+        if (!$schedule->reject_reason) {
+            return response()->json([
+                'message' => 'Jadwal ini belum ditolak oleh guru.',
+            ], 422);
+        }
+
+        $schedule->update([
+            'status' => 'rejected',
+        ]);
+
+        return response()->json([
+            'message' => 'Penolakan guru berhasil dikonfirmasi.',
+            'data' => $schedule->fresh()->load(['teacher.user', 'subject', 'classRoom', 'session']),
+        ]);
+    }
+
     /**
      * Get authenticated student's class schedule
      */

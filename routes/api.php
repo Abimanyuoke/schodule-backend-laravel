@@ -76,6 +76,7 @@ Route::middleware('auth:sanctum')->group(function () {
             // Schedule Management
             Route::apiResource('schedules', ScheduleController::class);
             Route::patch('/schedules/{schedule}/reassign', [ScheduleController::class, 'reassignTeacher']);
+            Route::patch('/schedules/{schedule}/confirm-rejection', [ScheduleController::class, 'confirmRejection']);
 
             // Filtering Helpers
             Route::get('/subjects/{subject}/teachers', [ScheduleController::class, 'teachersBySubject']);
