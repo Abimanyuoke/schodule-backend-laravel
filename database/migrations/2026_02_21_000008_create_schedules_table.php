@@ -48,6 +48,15 @@ return new class extends Migration
                 'sunday'
             ]);
 
+            $table->date('schedule_date')->nullable();
+            $table->unsignedTinyInteger('week_number')->nullable();
+            $table->unsignedTinyInteger('month')->nullable();
+            $table->year('year')->nullable();
+            $table->json('sub_subject_ids')->nullable();
+            $table->string('status')->default('active');
+            $table->text('reject_reason')->nullable();
+            $table->text('reason')->nullable();
+
             $table->timestamps();
 
             /*

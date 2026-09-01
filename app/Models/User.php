@@ -41,6 +41,11 @@ class User extends Authenticatable
         return 'kode_user';
     }
 
+    public function hasRole(string ...$roles): bool
+    {
+        return in_array($this->role, $roles, true);
+    }
+
     /**
      * Get associated student record
      */

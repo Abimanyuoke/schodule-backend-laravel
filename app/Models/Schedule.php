@@ -5,15 +5,45 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Builder;
 
+/**
+ * @property int $id
+ * @property int $class_room_id
+ * @property int $subject_id
+ * @property int|null $sub_subject_id
+ * @property array|null $sub_subject_ids
+ * @property int $teacher_id
+ * @property int $session_id
+ * @property string $day
+ * @property string|null $schedule_date
+ * @property int|null $week_number
+ * @property int|null $month
+ * @property int|null $year
+ * @property string $status
+ * @property string|null $reject_reason
+ * @property string|null $reason
+ */
 class Schedule extends Model
 {
     protected $fillable = [
         'class_room_id',
         'subject_id',
         'sub_subject_id',
+        'sub_subject_ids',
         'teacher_id',
         'session_id',
         'day',
+        'week_number',
+        'schedule_date',
+        'month',
+        'year',
+        'status',
+        'reject_reason',
+        'reason',
+    ];
+
+    protected $casts = [
+        'sub_subject_ids' => 'array',
+        'schedule_date' => 'date:Y-m-d',
     ];
 
     /**
@@ -38,6 +68,17 @@ class Schedule extends Model
     public function subSubject()
     {
         return $this->belongsTo(SubSubject::class);
+    }
+
+    public function getSubSubjectNamesAttribute()
+    {
+        $ids = is_array($this->sub_subject_ids) ? $this->sub_subject_ids : json_decode($this->sub_subject_ids ?? '[]', true);
+
+        if (empty($ids)) {
+            return $this->subSubject ? [$this->subSubject->name] : [];
+        }
+
+        return SubSubject::whereIn('id', $ids)->pluck('name')->toArray();
     }
 
     /**

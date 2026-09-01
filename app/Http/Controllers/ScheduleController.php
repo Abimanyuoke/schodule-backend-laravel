@@ -5,10 +5,11 @@ namespace App\Http\Controllers;
 use App\Models\Schedule;
 use App\Models\Teacher;
 use App\Models\SubSubject;
+use Illuminate\Database\QueryException;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
-use Illuminate\Database\QueryException;
 use Exception;
 
 class ScheduleController extends Controller
@@ -39,8 +40,22 @@ class ScheduleController extends Controller
                 $query->where('class_room_id', $request->class_room_id);
             }
 
+            if ($request->week_number) {
+                $query->where('week_number', $request->week_number);
+            }
+
+            if ($request->status) {
+                $query->where('status', $request->status);
+            }
+
+            if (Schema::hasColumn('schedules', 'schedule_date')) {
+                $query->orderBy('schedule_date');
+            }
+
+            $query->orderBy('day')->orderBy('session_id');
+
             return response()->json(
-                $query->orderBy('day')->orderBy('session_id')->get()
+                $query->get()
             );
         } catch (Exception $e) {
             return response()->json([
@@ -61,11 +76,19 @@ class ScheduleController extends Controller
                 'subject_id' => 'required|exists:subjects,id',
                 'teacher_id' => 'required|exists:teachers,id',
                 'sub_subject_id' => 'nullable|exists:sub_subjects,id',
+                'sub_subject_ids' => 'nullable|array',
+                'sub_subject_ids.*' => 'integer|exists:sub_subjects,id',
                 'session_id' => 'required|exists:sessions,id',
                 'day' => [
                     'required',
                     Rule::in(['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday']),
                 ],
+                'schedule_date' => 'nullable|date',
+                'week_number' => 'nullable|integer|min:1|max:4',
+                'month' => 'nullable|integer|min:1|max:12',
+                'year' => 'nullable|integer|min:2024',
+                'status' => 'nullable|string|max:50',
+                'reject_reason' => 'nullable|string|max:500',
             ]);
 
             $teacher = Teacher::findOrFail($validated['teacher_id']);
@@ -77,8 +100,13 @@ class ScheduleController extends Controller
                 ], 422);
             }
 
-            if (!empty($validated['sub_subject_id'])) {
-                $validSub = SubSubject::where('id', $validated['sub_subject_id'])
+            $selectedSubSubjectIds = array_values(array_unique(array_filter(
+                $validated['sub_subject_ids'] ?? ($validated['sub_subject_id'] ? [$validated['sub_subject_id']] : []),
+                fn ($id) => !empty($id)
+            )));
+
+            foreach ($selectedSubSubjectIds as $subSubjectId) {
+                $validSub = SubSubject::where('id', $subSubjectId)
                     ->where('subject_id', $validated['subject_id'])
                     ->exists();
 
@@ -90,13 +118,25 @@ class ScheduleController extends Controller
                 }
             }
 
+            $scheduleDate = !empty($validated['schedule_date']) ? $validated['schedule_date'] : now()->toDateString();
+            $weekNumber = $validated['week_number'] ?? min(4, max(1, (int) ceil((int) date('d', strtotime($scheduleDate)) / 7)));
+            $month = $validated['month'] ?? (int) date('n', strtotime($scheduleDate));
+            $year = $validated['year'] ?? (int) date('Y', strtotime($scheduleDate));
+
             $data = [
                 'class_room_id' => $validated['class_room_id'],
                 'teacher_id' => $teacher->id,
                 'subject_id' => $teacher->subject_id,
-                'sub_subject_id' => $validated['sub_subject_id'] ?? null,
+                'sub_subject_id' => $selectedSubSubjectIds[0] ?? null,
+                'sub_subject_ids' => $selectedSubSubjectIds,
                 'session_id' => $validated['session_id'],
                 'day' => $validated['day'],
+                'schedule_date' => $scheduleDate,
+                'week_number' => $weekNumber,
+                'month' => $month,
+                'year' => $year,
+                'status' => $validated['status'] ?? 'active',
+                'reject_reason' => $validated['reject_reason'] ?? null,
             ];
 
             if (Schedule::hasClassConflict($data['class_room_id'], $data['day'], $data['session_id'])) {
@@ -157,11 +197,19 @@ class ScheduleController extends Controller
                 'subject_id' => 'required|exists:subjects,id',
                 'teacher_id' => 'required|exists:teachers,id',
                 'sub_subject_id' => 'nullable|exists:sub_subjects,id',
+                'sub_subject_ids' => 'nullable|array',
+                'sub_subject_ids.*' => 'integer|exists:sub_subjects,id',
                 'session_id' => 'required|exists:sessions,id',
                 'day' => [
                     'required',
                     Rule::in(['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday']),
                 ],
+                'schedule_date' => 'nullable|date',
+                'week_number' => 'nullable|integer|min:1|max:4',
+                'month' => 'nullable|integer|min:1|max:12',
+                'year' => 'nullable|integer|min:2024',
+                'status' => 'nullable|string|max:50',
+                'reject_reason' => 'nullable|string|max:500',
             ]);
 
             $teacher = Teacher::findOrFail($validated['teacher_id']);
@@ -173,8 +221,13 @@ class ScheduleController extends Controller
                 ], 422);
             }
 
-            if (!empty($validated['sub_subject_id'])) {
-                $validSub = SubSubject::where('id', $validated['sub_subject_id'])
+            $selectedSubSubjectIds = array_values(array_unique(array_filter(
+                $validated['sub_subject_ids'] ?? ($validated['sub_subject_id'] ? [$validated['sub_subject_id']] : []),
+                fn ($id) => !empty($id)
+            )));
+
+            foreach ($selectedSubSubjectIds as $subSubjectId) {
+                $validSub = SubSubject::where('id', $subSubjectId)
                     ->where('subject_id', $validated['subject_id'])
                     ->exists();
 
@@ -186,23 +239,36 @@ class ScheduleController extends Controller
                 }
             }
 
+            $scheduleDate = !empty($validated['schedule_date']) ? $validated['schedule_date'] : $schedule->schedule_date ?? now()->toDateString();
+            $weekNumber = $validated['week_number'] ?? $schedule->week_number ?? min(4, max(1, (int) ceil((int) date('d', strtotime($scheduleDate)) / 7)));
+            $month = $validated['month'] ?? $schedule->month ?? (int) date('n', strtotime($scheduleDate));
+            $year = $validated['year'] ?? $schedule->year ?? (int) date('Y', strtotime($scheduleDate));
+            $scheduleId = (int) $schedule->getKey();
+
             $data = [
                 'class_room_id' => $validated['class_room_id'],
                 'teacher_id' => $teacher->id,
                 'subject_id' => $teacher->subject_id,
-                'sub_subject_id' => $validated['sub_subject_id'] ?? null,
+                'sub_subject_id' => $selectedSubSubjectIds[0] ?? null,
+                'sub_subject_ids' => $selectedSubSubjectIds,
                 'session_id' => $validated['session_id'],
                 'day' => $validated['day'],
+                'schedule_date' => $scheduleDate,
+                'week_number' => $weekNumber,
+                'month' => $month,
+                'year' => $year,
+                'status' => $validated['status'] ?? $schedule->status ?? 'active',
+                'reject_reason' => $validated['reject_reason'] ?? $schedule->reject_reason ?? null,
             ];
 
-            if (Schedule::hasClassConflict($data['class_room_id'], $data['day'], $data['session_id'], $schedule->id)) {
+            if (Schedule::hasClassConflict($data['class_room_id'], $data['day'], $data['session_id'], $scheduleId)) {
                 return response()->json([
                     'message' => 'Conflict detected',
                     'error' => 'This classroom already has a schedule in this session.',
                 ], 409);
             }
 
-            if (Schedule::hasTeacherConflict($data['teacher_id'], $data['day'], $data['session_id'], $schedule->id)) {
+            if (Schedule::hasTeacherConflict($data['teacher_id'], $data['day'], $data['session_id'], $scheduleId)) {
                 return response()->json([
                     'message' => 'Conflict detected',
                     'error' => 'This teacher already has a schedule in this session.',
@@ -366,18 +432,82 @@ class ScheduleController extends Controller
             ], 404);
         }
 
-        return response()->json(
-            Schedule::with([
-                'classRoom',
-                'subject',
-                'subSubject',
-                'session',
-            ])
-                ->where('teacher_id', $teacher->id)
-                ->orderBy('day')
-                ->orderBy('session_id')
-                ->get()
-        );
+        $query = Schedule::with([
+            'classRoom',
+            'subject',
+            'subSubject',
+            'session',
+            'teacher.user',
+        ])
+            ->where('teacher_id', $teacher->id)
+            ->where('status', '!=', 'rejected')
+            ->orderBy('schedule_date')
+            ->orderBy('day')
+            ->orderBy('session_id');
+
+        return response()->json($query->get());
+    }
+
+    public function rejectSchedule(Request $request, Schedule $schedule)
+    {
+        $teacher = $request->user()->teacher;
+
+        if (!$teacher || $schedule->teacher_id !== $teacher->id) {
+            return response()->json([
+                'message' => 'Forbidden',
+                'error' => 'Anda tidak dapat menolak jadwal ini.',
+            ], 403);
+        }
+
+        $validated = $request->validate([
+            'reject_reason' => 'nullable|string|max:500',
+        ]);
+
+        $schedule->update([
+            'status' => 'rejected',
+            'reject_reason' => $validated['reject_reason'] ?? 'Jadwal ditolak oleh guru.',
+        ]);
+
+        return response()->json([
+            'message' => 'Jadwal berhasil ditolak.',
+            'data' => $schedule->fresh(),
+        ]);
+    }
+
+    public function reassignTeacher(Request $request, Schedule $schedule)
+    {
+        if (!$request->user() || !$request->user()->hasRole('admin')) {
+            return response()->json([
+                'message' => 'Forbidden',
+                'error' => 'Hanya admin yang dapat mengganti pengajar.',
+            ], 403);
+        }
+
+        $validated = $request->validate([
+            'teacher_id' => 'required|exists:teachers,id',
+            'reason' => 'nullable|string|max:500',
+        ]);
+
+        $newTeacher = Teacher::findOrFail($validated['teacher_id']);
+
+        if ($newTeacher->subject_id != $schedule->subject_id) {
+            return response()->json([
+                'message' => 'Validation failed',
+                'error' => 'Pengajar baru harus mengajar mapel yang sama.',
+            ], 422);
+        }
+
+        $schedule->update([
+            'teacher_id' => $newTeacher->id,
+            'status' => 'active',
+            'reject_reason' => null,
+            'reason' => $validated['reason'] ?? null,
+        ]);
+
+        return response()->json([
+            'message' => 'Pengajar berhasil diganti.',
+            'data' => $schedule->fresh()->load(['teacher.user', 'subject']),
+        ]);
     }
 
     /**

@@ -75,6 +75,7 @@ Route::middleware('auth:sanctum')->group(function () {
 
             // Schedule Management
             Route::apiResource('schedules', ScheduleController::class);
+            Route::patch('/schedules/{schedule}/reassign', [ScheduleController::class, 'reassignTeacher']);
 
             // Filtering Helpers
             Route::get('/subjects/{subject}/teachers', [ScheduleController::class, 'teachersBySubject']);
@@ -93,11 +94,9 @@ Route::middleware('auth:sanctum')->group(function () {
         ->group(function () {
             Route::get('/dashboard', [TeacherDashboardController::class, 'index']);
             Route::get('/schedules', [ScheduleController::class, 'mySchedule']);
+            Route::patch('/schedules/{schedule}/reject', [ScheduleController::class, 'rejectSchedule']);
         });
 
-    /**
-     * STUDENT ROUTES
-     */
     Route::prefix('student')
         ->middleware('role:student')
         ->group(function () {
