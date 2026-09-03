@@ -13,6 +13,41 @@ use Exception;
 
 class UserController extends Controller
 {
+    public function updateCurrentProfile(Request $request)
+    {
+        $validated = $request->validate([
+            'name' => 'required|string|max:255',
+            'phone_number' => 'nullable|string|max:30',
+        ]);
+
+        $user = $request->user();
+        $user->update($validated);
+
+        return response()->json([
+            'message' => 'Profil berhasil diperbarui',
+            'user' => $user->fresh(),
+        ]);
+    }
+
+    public function updateCurrentPassword(Request $request)
+    {
+        $validated = $request->validate([
+            'current_password' => 'required|string',
+            'password' => 'required|string|min:6|confirmed',
+        ]);
+
+        $user = $request->user();
+
+        if (!Hash::check($validated['current_password'], $user->password)) {
+            return response()->json(['message' => 'Password lama tidak sesuai'], 422);
+        }
+
+        $user->update(['password' => Hash::make($validated['password'])]);
+        $user->tokens()->delete();
+
+        return response()->json(['message' => 'Password berhasil diperbarui']);
+    }
+
     public function updateProfileAvatar(Request $request)
     {
         $validated = $request->validate([
